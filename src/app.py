@@ -45,6 +45,26 @@ _llm = None
 _base = None
 _refiner = None
 
+# Absolute, resolved root that all output files must reside within.
+# Evaluated once at startup so it is not dependent on the working directory.
+_OUTPUT_ROOT = Path("/app/outputs").resolve()
+
+
+def _safe_output_dir(user_dir: str) -> Path:
+    """
+    Resolve a user-supplied output directory to a path that is strictly
+    inside _OUTPUT_ROOT, preventing path-traversal attacks.
+
+    Any path that would escape the output root is silently replaced with
+    _OUTPUT_ROOT itself.
+    """
+    try:
+        candidate = (_OUTPUT_ROOT / user_dir).resolve()
+        candidate.relative_to(_OUTPUT_ROOT)   # raises ValueError if outside root
+        return candidate
+    except (ValueError, Exception):
+        return _OUTPUT_ROOT
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -105,7 +125,7 @@ async def generate_image(req: GenerateRequest):
         print(f"[generate] '{req.prompt[:60]}' → {elapsed:.1f}s")
 
         # ------------------------------------------------- Save to disk
-        out_dir = Path(req.output_dir)
+        out_dir = _safe_output_dir(req.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         safe_name = req.prompt[:40].replace(" ", "_").replace("/", "-")
         out_path = out_dir / f"{safe_name}.png"

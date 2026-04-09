@@ -55,9 +55,8 @@ RUN pip install --upgrade pip && \
     pip install torch==2.2.2 torchvision==0.17.2 \
         --index-url https://download.pytorch.org/whl/cu121
 
-# Install llama-cpp-python with CUDA support
-RUN CMAKE_ARGS="-DLLAMA_CUBLAS=on" \
-    pip install llama-cpp-python==0.2.77 \
+# Install llama-cpp-python with CUDA support (pre-built CUDA wheel)
+RUN pip install llama-cpp-python==0.2.77 \
         --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
 # Install remaining dependencies
