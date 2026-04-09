@@ -18,7 +18,7 @@ from PIL import Image
 
 def run(prompt: str, output_dir: str = "outputs") -> Path:
     """
-    Full pipeline: text prompt → 1024×1024 PNG.
+    Full pipeline: text prompt → 512×512 PNG.
 
     Args:
         prompt:     Free-text description of the desired image.
@@ -30,28 +30,28 @@ def run(prompt: str, output_dir: str = "outputs") -> Path:
     t_total = time.time()
 
     # ----------------------------------------------------------------- [1/5] Load
-    print("\n[1/5] Loading models …")
+    print("\n[1/5] Loading model …")
     t = time.time()
-    llm, base, refiner = load_models()
+    pipe = load_models()
     print(f"      Done in {time.time() - t:.1f}s")
 
     # ----------------------------------------------------------------- [2/5] Parse
-    print("\n[2/5] TinyLlama → JSON params …")
+    print("\n[2/5] Building params from prompt …")
     t = time.time()
-    params = get_params(llm, prompt)
+    params = get_params(prompt)
     print(f"      Done in {time.time() - t:.1f}s")
     print(json.dumps(params, indent=2))
 
     # ----------------------------------------------------------------- [3/5] Build prompts
-    print("\n[3/5] Building SDXL prompts …")
+    print("\n[3/5] Building SD prompts …")
     positive, negative = build_prompts(params)
     print(f"  (+) {positive[:120]} …")
     print(f"  (-) {negative[:120]} …")
 
     # ----------------------------------------------------------------- [4/5] Generate
-    print("\n[4/5] SDXL Base + Refiner …")
+    print("\n[4/5] Stable Diffusion 1.5 …")
     t = time.time()
-    arr = generate(base, refiner, positive, negative, params)
+    arr = generate(pipe, positive, negative, params)
     elapsed = time.time() - t
     print(f"      Done in {elapsed:.1f}s")
     print(f"      Output shape : {arr.shape}  dtype : {arr.dtype}")

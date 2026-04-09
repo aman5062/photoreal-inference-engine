@@ -1,7 +1,11 @@
-# Photoreal Inference Engine
+# Photoreal Inference Engine — Lightweight Edition
 
 A fully **offline**, **Docker-runnable** photorealistic image generation pipeline.  
-**No API key required.** Generates 1024 × 1024 HD PNG images from plain-text prompts.
+**No API key required.** Generates 512 × 512 PNG images from plain-text prompts.
+
+> **Lightweight branch**: This branch uses **Stable Diffusion 1.5** (single model, ~4 GB)
+> and a rule-based prompt parser — no TinyLlama LLM and no SDXL refiner.  
+> Requirements are dramatically reduced: 4 GB VRAM minimum, no C++ build toolchain needed.
 
 ## Pipeline Architecture
 
@@ -10,31 +14,19 @@ User Prompt
     │
     ▼
 ┌─────────────────┐
-│  TinyLlama 1.1B │  ~0.8s  →  JSON: scene, style, mood, intensity, noise, blur
-│  (GGUF Q4_K_M)  │
+│  Rule-based     │  ~0ms   →  params: scene, style, mood, intensity, noise, blur
+│  Prompt Parser  │           (keyword matching — no LLM required)
 └─────────────────┘
     │
     ▼
 ┌─────────────────┐
-│  Prompt Builder │  ~0.001s → positive + negative SDXL strings
+│  Prompt Builder │  ~0ms   →  positive + negative SD prompt strings
 └─────────────────┘
     │
     ▼
 ┌─────────────────┐
-│  SDXL Base 1.0  │  ~6-8s  →  128×128×4 latent tensor (denoising_end=0.8)
-│  30 steps       │
-│  DPM++ 2M Karras│
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│ SDXL Refiner 1.0│  ~3-4s  →  high-frequency detail pass (denoising_start=0.8)
+│  SD 1.5         │  ~5-10s →  512×512 RGB image (20 inference steps)
 │  20 steps       │
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│  VAE Decoder    │  ~0.5s  →  1024×1024×3 uint8 array
 └─────────────────┘
     │
     ▼
@@ -44,7 +36,7 @@ User Prompt
 └─────────────────┘
     │
     ▼
-output.png  (1024×1024, lossless PNG, ~800 KB–2 MB)
+output.png  (512×512, lossless PNG, ~300–600 KB)
 ```
 
 ## Project Structure
@@ -52,21 +44,20 @@ output.png  (1024×1024, lossless PNG, ~800 KB–2 MB)
 ```
 photoreal-inference-engine/
 ├── src/
-│   ├── pipeline.py       model loading & shared resource management
-│   ├── model.py          TinyLlama inference → structured JSON params
-│   ├── prompt.py         JSON → positive + negative SDXL prompt strings
-│   ├── generate.py       SDXL Base + Refiner two-stage inference
+│   ├── pipeline.py       model loading (SD 1.5)
+│   ├── model.py          rule-based prompt parser → structured params
+│   ├── prompt.py         params → positive + negative SD prompt strings
+│   ├── generate.py       SD 1.5 single-stage inference
 │   ├── filters.py        byte-level NumPy/SciPy post-processing
 │   ├── main.py           CLI entry point
 │   └── app.py            FastAPI HTTP server
-├── models/               TinyLlama GGUF goes here (volume-mounted)
 ├── outputs/              Generated PNGs saved here (volume-mounted)
 ├── Dockerfile            GPU / CUDA 12.1 build
 ├── Dockerfile.cpu        CPU-only build
 ├── docker-compose.yml    GPU deployment
 ├── docker-compose.cpu.yml  CPU deployment
-├── entrypoint.sh         Container entrypoint (auto-downloads TinyLlama)
-├── download_models.py    Model download helper script
+├── entrypoint.sh         Container entrypoint
+├── download_models.py    Optional: pre-cache SD 1.5 weights
 └── requirements.txt      Python dependencies
 ```
 
@@ -74,29 +65,21 @@ photoreal-inference-engine/
 
 | Config | RAM | VRAM | Storage | Speed |
 |--------|-----|------|---------|-------|
-| CPU only | 16 GB | — | 30 GB | ~5-15 min/image |
-| GPU (min) | 16 GB | 8 GB | 30 GB | ~15-20s/image |
-| GPU (recommended) | 32 GB | 12 GB+ | 30 GB | ~10-15s/image |
+| CPU only | 8 GB | — | 8 GB | ~5-15 min/image |
+| GPU (min) | 8 GB | 4 GB | 8 GB | ~5-10s/image |
+| GPU (recommended) | 16 GB | 6 GB+ | 8 GB | ~3-6s/image |
 
 ## Quick Start (Docker — GPU)
 
-### 1. Download TinyLlama
-
-```bash
-python download_models.py
-```
-
-This saves `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` (~670 MB) into `models/`.
-
-### 2. Build & start the API server
+### 1. Build & start the API server
 
 ```bash
 docker compose up --build
 ```
 
-SDXL Base + Refiner (~12 GB) download automatically from HuggingFace on first startup.
+SD 1.5 weights (~4 GB) download automatically from HuggingFace on first startup.
 
-### 3. Generate an image
+### 2. Generate an image
 
 ```bash
 curl -X POST http://localhost:8000/generate \
@@ -107,7 +90,7 @@ curl -X POST http://localhost:8000/generate \
 
 The image is also saved to `./outputs/` on the host.
 
-### 4. CLI mode (alternative)
+### 3. CLI mode (alternative)
 
 ```bash
 docker compose run --rm app python src/main.py \
@@ -135,13 +118,10 @@ pip install torch==2.2.2 torchvision==0.17.2 \
     --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
 
-# 2. Download TinyLlama
-python download_models.py
-
-# 3. Run CLI
+# 2. Run CLI
 python src/main.py "a misty mountain valley at sunrise"
 
-# 4. Or start the web server
+# 3. Or start the web server
 python src/app.py
 ```
 
@@ -149,7 +129,7 @@ python src/app.py
 
 ### `POST /generate`
 
-Generate a 1024×1024 PNG from a text prompt.
+Generate a 512×512 PNG from a text prompt.
 
 **Request body:**
 ```json
@@ -163,8 +143,8 @@ Generate a 1024×1024 PNG from a text prompt.
 
 **Response headers:**
 ```
-X-Generation-Time: 14.32s
-X-Params: {"scene":"...","style":"...","mood":"...","intensity":0.85,...}
+X-Generation-Time: 7.21s
+X-Params: {"scene":"...","style":"...","mood":"...","intensity":0.75,...}
 X-Output-Path: outputs/a_cinematic_close-up_of_a_wolf_in_a.png
 ```
 
@@ -178,9 +158,7 @@ X-Output-Path: outputs/a_cinematic_close-up_of_a_wolf_in_a.png
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLAMA_MODEL_PATH` | `models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` | Path to TinyLlama GGUF |
-| `SDXL_BASE_MODEL` | `stabilityai/stable-diffusion-xl-base-1.0` | HF model ID or local path |
-| `SDXL_REFINER_MODEL` | `stabilityai/stable-diffusion-xl-refiner-1.0` | HF model ID or local path |
+| `SD_MODEL` | `runwayml/stable-diffusion-v1-5` | HF model ID or local path |
 | `HF_HOME` | `/app/.cache/huggingface` | HuggingFace cache directory |
 | `PORT` | `8000` | FastAPI server port |
 | `HUGGING_FACE_HUB_TOKEN` | _(unset)_ | Optional HF token for gated models |
@@ -189,8 +167,15 @@ X-Output-Path: outputs/a_cinematic_close-up_of_a_wolf_in_a.png
 
 | Model | Size | Source |
 |-------|------|--------|
-| TinyLlama 1.1B Q4_K_M | 670 MB | TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF |
-| SDXL Base 1.0 | 6.5 GB | stabilityai/stable-diffusion-xl-base-1.0 |
-| SDXL Refiner 1.0 | 6.1 GB | stabilityai/stable-diffusion-xl-refiner-1.0 |
+| Stable Diffusion 1.5 | ~4 GB | runwayml/stable-diffusion-v1-5 |
 
-> **Tip:** Base and Refiner share `text_encoder_2` and `vae` — this saves ~3 GB VRAM at runtime.
+## Comparison with Full Version
+
+| Feature | Lightweight (this branch) | Full version |
+|---------|--------------------------|--------------|
+| Image size | 512×512 | 1024×1024 |
+| Models | SD 1.5 (~4 GB) | SDXL Base + Refiner (~13 GB) + TinyLlama (~670 MB) |
+| VRAM required | 4 GB | 8–12 GB |
+| Inference time (GPU) | ~5-10s | ~15-20s |
+| Prompt parsing | Rule-based (instant) | TinyLlama LLM (~0.8s) |
+| C++ build tools needed | No | Yes (llama-cpp-python) |
