@@ -1,0 +1,58 @@
+# docker-compose.yml — GPU (CUDA) deployment
+# Usage:
+#   docker compose up --build           # start API server
+#   docker compose run --rm app python src/main.py "your prompt"
+#
+# Prerequisites:
+#   1. NVIDIA GPU + NVIDIA Container Toolkit installed
+#   2. models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf present (or run download_models.py)
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: photoreal-engine:gpu
+    container_name: photoreal-engine-gpu
+    restart: unless-stopped
+
+    # GPU passthrough
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Persist TinyLlama GGUF model
+      - ./models:/app/models
+      # Persist generated output images
+      - ./outputs:/app/outputs
+      # Persist HuggingFace model cache (SDXL ~12 GB)
+      - hf_cache:/app/.cache/huggingface
+
+    environment:
+      - LLAMA_MODEL_PATH=/app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - SDXL_BASE_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+      - SDXL_REFINER_MODEL=stabilityai/stable-diffusion-xl-refiner-1.0
+      - HF_HOME=/app/.cache/huggingface
+      - PORT=8000
+      # Optional: set your HuggingFace token for private/gated model access
+      # - HUGGING_FACE_HUB_TOKEN=hf_...
+
+    # Health check: ping the /health endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  hf_cache:
+    driver: local

@@ -1,0 +1,41 @@
+# docker-compose.cpu.yml — CPU-only deployment (no GPU required)
+# Usage:
+#   docker compose -f docker-compose.cpu.yml up --build
+#   docker compose -f docker-compose.cpu.yml run --rm app python src/main.py "your prompt"
+#
+# Note: CPU inference is much slower (~5-15 min per image).
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: photoreal-engine:cpu
+    container_name: photoreal-engine-cpu
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./models:/app/models
+      - ./outputs:/app/outputs
+      - hf_cache_cpu:/app/.cache/huggingface
+
+    environment:
+      - LLAMA_MODEL_PATH=/app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - SDXL_BASE_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+      - SDXL_REFINER_MODEL=stabilityai/stable-diffusion-xl-refiner-1.0
+      - HF_HOME=/app/.cache/huggingface
+      - PORT=8000
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+volumes:
+  hf_cache_cpu:
+    driver: local
