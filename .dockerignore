@@ -1,0 +1,42 @@
+# .dockerignore — Exclude large/unnecessary files from the Docker build context
+# Models are mounted as volumes at runtime, not baked into the image
+
+# Model weights (large binary files)
+models/
+outputs/
+.cache/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Docs / planning
+*.docx
+*.pdf
+*.md
