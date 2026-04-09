@@ -4,8 +4,8 @@
 #   docker compose run --rm app python src/main.py "your prompt"
 #
 # Prerequisites:
-#   1. NVIDIA GPU + NVIDIA Container Toolkit installed
-#   2. models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf present (or run download_models.py)
+#   1. NVIDIA GPU with ≥ 4 GB VRAM
+#   2. NVIDIA Container Toolkit installed
 
 services:
   app:
@@ -29,20 +29,16 @@ services:
       - "8000:8000"
 
     volumes:
-      # Persist TinyLlama GGUF model
-      - ./models:/app/models
       # Persist generated output images
       - ./outputs:/app/outputs
-      # Persist HuggingFace model cache (SDXL ~12 GB)
+      # Persist HuggingFace model cache (SD 1.5 ~4 GB)
       - hf_cache:/app/.cache/huggingface
 
     environment:
-      - LLAMA_MODEL_PATH=/app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
-      - SDXL_BASE_MODEL=stabilityai/stable-diffusion-xl-base-1.0
-      - SDXL_REFINER_MODEL=stabilityai/stable-diffusion-xl-refiner-1.0
+      - SD_MODEL=runwayml/stable-diffusion-v1-5
       - HF_HOME=/app/.cache/huggingface
       - PORT=8000
-      # Optional: set your HuggingFace token for private/gated model access
+      # Optional: set your HuggingFace token for gated model access
       # - HUGGING_FACE_HUB_TOKEN=hf_...
 
     # Health check: ping the /health endpoint
@@ -56,3 +52,4 @@ services:
 volumes:
   hf_cache:
     driver: local
+

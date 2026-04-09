@@ -36,14 +36,12 @@ from filters import apply_filters
 # App & model state                                                              #
 # --------------------------------------------------------------------------- #
 app = FastAPI(
-    title="Photoreal Inference Engine",
-    description="TinyLlama + SDXL Base + Refiner photorealistic image generation",
-    version="2.0",
+    title="Photoreal Inference Engine (Lightweight)",
+    description="SD 1.5 photorealistic image generation — no LLM required",
+    version="3.0",
 )
 
-_llm = None
-_base = None
-_refiner = None
+_pipe = None
 
 # Absolute, resolved root that all output files must reside within.
 # Evaluated once at startup so it is not dependent on the working directory.
@@ -68,12 +66,12 @@ def _safe_output_dir(user_dir: str) -> Path:
 
 @app.on_event("startup")
 async def startup_event():
-    """Load all models once at startup so every request is fast."""
-    global _llm, _base, _refiner
-    print("[startup] Loading models …")
+    """Load the model once at startup so every request is fast."""
+    global _pipe
+    print("[startup] Loading model …")
     t = time.time()
-    _llm, _base, _refiner = load_models()
-    print(f"[startup] Models ready in {time.time() - t:.1f}s")
+    _pipe = load_models()
+    print(f"[startup] Model ready in {time.time() - t:.1f}s")
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +93,7 @@ async def health():
 @app.post("/generate")
 async def generate_image(req: GenerateRequest):
     """
-    Generate a 1024×1024 photorealistic PNG from a text prompt.
+    Generate a 512×512 photorealistic PNG from a text prompt.
 
     Returns the PNG file as binary response (Content-Type: image/png).
     Also saves it to the outputs/ directory for persistence.
@@ -103,20 +101,20 @@ async def generate_image(req: GenerateRequest):
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="'prompt' must not be empty.")
 
-    if _llm is None or _base is None or _refiner is None:
-        raise HTTPException(status_code=503, detail="Models not loaded yet.")
+    if _pipe is None:
+        raise HTTPException(status_code=503, detail="Model not loaded yet.")
 
     try:
         t_total = time.time()
 
-        # ------------------------------------------------- TinyLlama → JSON
-        params = get_params(_llm, req.prompt)
+        # ------------------------------------------------- Rule-based params
+        params = get_params(req.prompt)
 
-        # ------------------------------------------------- Build SDXL prompts
+        # ------------------------------------------------- Build SD prompts
         positive, negative = build_prompts(params)
 
-        # ------------------------------------------------- SDXL inference
-        arr = generate(_base, _refiner, positive, negative, params)
+        # ------------------------------------------------- SD 1.5 inference
+        arr = generate(_pipe, positive, negative, params)
 
         # ------------------------------------------------- Post-processing
         arr = apply_filters(arr, params)
@@ -146,8 +144,6 @@ async def generate_image(req: GenerateRequest):
             },
         )
 
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

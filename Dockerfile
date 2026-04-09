@@ -2,7 +2,7 @@
 # Dockerfile — GPU (CUDA 12.1) build
 # ============================================================
 # Requirements:
-#   - NVIDIA GPU with ≥ 8 GB VRAM (12 GB+ recommended)
+#   - NVIDIA GPU with ≥ 4 GB VRAM (6 GB+ recommended)
 #   - NVIDIA Container Toolkit installed on host
 #   - Docker 20.10+
 #
@@ -10,13 +10,11 @@
 #   docker build -t photoreal-engine:gpu .
 #
 # Run (CLI):
-#   docker run --gpus all -v $(pwd)/models:/app/models \
-#     -v $(pwd)/outputs:/app/outputs \
+#   docker run --gpus all -v $(pwd)/outputs:/app/outputs \
 #     photoreal-engine:gpu python src/main.py "your prompt here"
 #
 # Run (API server):
 #   docker run --gpus all -p 8000:8000 \
-#     -v $(pwd)/models:/app/models \
 #     -v $(pwd)/outputs:/app/outputs \
 #     photoreal-engine:gpu
 # ============================================================
@@ -37,14 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
         python3.11-venv \
         git \
-        git-lfs \
         wget \
         curl \
         libgomp1 \
         libstdc++6 \
-        build-essential \
-        cmake \
-        libopenblas-dev \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
@@ -54,10 +48,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip && \
     pip install torch==2.2.2 torchvision==0.17.2 \
         --index-url https://download.pytorch.org/whl/cu121
-
-# Install llama-cpp-python with CUDA support (pre-built CUDA wheel)
-RUN pip install llama-cpp-python==0.2.77 \
-        --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
 # Install remaining dependencies
 COPY requirements.txt /tmp/requirements.txt
@@ -78,19 +68,16 @@ RUN pip install \
 WORKDIR /app
 COPY src/ ./src/
 COPY entrypoint.sh ./entrypoint.sh
-COPY download_models.py ./download_models.py
 
 RUN chmod +x entrypoint.sh && \
-    mkdir -p models outputs
+    mkdir -p outputs
 
 # ── Runtime configuration ─────────────────────────────────────
 # HuggingFace cache inside the container (override with -v for persistence)
 ENV HF_HOME=/app/.cache/huggingface \
     TRANSFORMERS_CACHE=/app/.cache/huggingface \
     HUGGINGFACE_HUB_CACHE=/app/.cache/huggingface \
-    LLAMA_MODEL_PATH=/app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
-    SDXL_BASE_MODEL=stabilityai/stable-diffusion-xl-base-1.0 \
-    SDXL_REFINER_MODEL=stabilityai/stable-diffusion-xl-refiner-1.0 \
+    SD_MODEL=runwayml/stable-diffusion-v1-5 \
     PORT=8000
 
 EXPOSE 8000
@@ -98,3 +85,4 @@ EXPOSE 8000
 ENTRYPOINT ["./entrypoint.sh"]
 # Default: start the FastAPI server
 CMD ["server"]
+
